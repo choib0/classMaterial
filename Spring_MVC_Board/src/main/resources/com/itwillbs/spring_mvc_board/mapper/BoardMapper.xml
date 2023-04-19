@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.itwillbs.spring_mvc_board.mapper.BoardMapper">
+	
+	<!-- 글쓰기 - INSERT -->
+	<!-- 
+	단, 글번호(board_num) 컬럼이 일반 정수 컬럼이므로 기존 게시물 번호 중 가장 큰 번호 조회 후
+	해당 번호 + 1 값을 새 글 번호(board_num) 와 참조글번호(board_re_ref) 값으로 사용
+	=> selectKey 태그를 insert 태그 내에서 사용(SELECT 구문이 먼저이므로 order="BEFORE" 사용)
+	=> 주의! 게시물이 하나도 없을 경우 board_num 이 null 이므로 IFNULL 함수 추가(기본값 0 설정)
+	-->
+	<insert id="insertBoard">
+		<selectKey keyProperty="board_num" resultType="int" order="BEFORE">
+			SELECT IFNULL(MAX(board_num), 0) FROM board
+		</selectKey>
+		INSERT
+			INTO board
+			VALUES (
+				#{board_num} + 1
+				, #{board_name}
+				, #{board_subject}
+				, #{board_content}
+				, #{board_file}
+				, #{board_file_path}
+				, #{board_num} + 1
+				, 0
+				, 0
+				, 0
+				, now()
+			)
+	</insert>
+	
+	<!-- 글 목록 조회(전체 게시물 목록 조회 => 이 때, 검색타입과 검색어 처리 포함 -->
+	<select id="selectBoardList" resultType="com.itwillbs.spring_mvc_board.vo.BoardVO">
+		SELECT * 
+			FROM board -- FROM 절 이후 작업 분기 일어남(= 동적 쿼리문 작성 필요)
+			<!-- 
+			조건1) 검색어가 널스트링이 아닐 때 WHERE 추가 => if 태그 필요
+			조건2) 검색어가 널스트링이 아닐 때 검색타입에 따라 컬럼명 다르게 검색
+			       => 조건에 따른 SQL 구문을 실행하기 위해 choose, when, otherwise 태그 필요
+			          복수개의 조건을 판별(if ~ else if 문 구조와 동일)
+			
+			(주의사항)
+			MySQL 의 WHERE 에 LIKE 절 조합하여 검색 데이터를 포함하는 레코드 검색 시
+			LIKE '%검색데이터%' 형식으로 지정해야한다.
+			이 때, 마이바티스에서 표현 시 '%${검색데이터}%' 형식으로 지정할 경우 오류 발생
+			=> 마이바티스에서 ${데이터} 형식은 자동으로 해당 컬럼 타입으로 취급된다.
+			   즉, 문자열 컬럼일 경우 자동으로 해당 데이터에 '' 기호 붙여서 문자열 파라미터로 표기
+			   따라서, '%${검색데이터}%' 형식으로 지정 시 '%'검색데이터'%' 형태의 문자열로 변경됨
+			=> 이런 경우에는 문자열로 취급되지 않도록 #{} 대신 ${} 로 파라미터 지정   
+			   (${} 사용 시 전달받은 데이터 형태 그대로 SQL 문장에 전달)
+			   (따라서, SQL 삽입 공격 등 보안 취약점이 있을 수 있으므로 사용자 입력 데이터에는
+			    가급적 ${} 보다는 #{} 를 사용해야한다!)
+			=> 결론> 테이블명, LIKE 절 등에 전달되는 데이터는 ${} 사용하고
+			         외부로부터 입력받아 전달되어야 하는 실제 데이터는 #{} 사용하자!
+			-->
+			<!-- 1. 검색어(searchKeyword)가 널스트링 아닐 때 검색어 추가 WHERE 절 수행, 아니면 생략 -->
+			<!-- => 조건이 하나일 경우 if 태그를 사용하여 단일 조건 판별 가능(if문 구조와 동일) -->
+			<if test="!searchKeyword.equals('')">
+				WHERE
+				<!-- 2. 검색타입(searchType)에 따른 WHERE 절 조건 대상 변경 -->
+				<!-- => 조건이 복수개이므로 if 대신 choose 태그(when, otherwise) 사용 -->
+				<choose>
+					<when test="searchType.equals('subject')">
+						board_subject LIKE '%${searchKeyword}%'
+					</when>
+					<when test="searchType.equals('content')">
+						board_content LIKE '%${searchKeyword}%'
+					</when>
+					<when test="searchType.equals('subject_content')">
+						board_subject LIKE '%${searchKeyword}%'
+						OR board_content LIKE '%${searchKeyword}%'
+					</when>
+					<when test="searchType.equals('name')">
+						board_name LIKE '%${searchKeyword}%
+					</when>
+				</choose> 
+			</if>
+			ORDER BY
+				board_re_ref DESC
+				, board_re_seq ASC
+			LIMIT 
+				#{startRow}
+				, #{listLimit}	
+	</select>
+	
+	<!-- 글 목록 총 갯수 조회 -->
+	<!-- 
+	LIKE 절 사용 시 CONCAT 함수를 통해 문자열 결합도 가능
+	단, 문자열 결합 시 파라미터는 ${} 대신 #{} 으로 지정해야한다!
+	(=> 각 데이터가 모두 문자열로 취급되어야 하므로)
+	-->
+	<select id="selectBoardListCount" resultType="int">
+		SELECT COUNT(*) 
+			FROM board -- FROM 절 이후 작업 분기 일어남(= 동적 쿼리문 작성 필요)
+			<if test="!searchKeyword.equals('')">
+				WHERE
+				<choose>
+					<when test="searchType.equals('subject')">
+						board_subject LIKE CONCAT('%', #{searchKeyword}, '%')
+					</when>
+					<when test="searchType.equals('content')">
+						board_content LIKE CONCAT('%', #{searchKeyword}, '%')
+					</when>
+					<when test="searchType.equals('subject_content')">
+						board_subject LIKE CONCAT('%', #{searchKeyword}, '%')
+						OR board_content LIKE CONCAT('%', #{searchKeyword}, '%')
+					</when>
+					<when test="searchType.equals('name')">
+						board_name LIKE CONCAT('%', #{searchKeyword}, '%')
+					</when>
+				</choose> 
+			</if>
+	</select>
+	
+	<!-- 글 상세정보 조회 - SELECT -->
+	<select id="selectBoard" resultType="com.itwillbs.spring_mvc_board.vo.BoardVO">
+		SELECT *
+			FROM board
+			WHERE 
+				board_num = #{board_num}
+	</select>
+	
+	<!-- 글 조회수 증가 - UPDATE -->
+	<update id="updateReadcount">
+		UPDATE board
+			SET 
+				board_readcount = board_readcount + 1
+			WHERE 
+				board_num = #{board_num}
+	</update>
+</mapper>
+
+
+
+
+
+
+
+
+
+
+

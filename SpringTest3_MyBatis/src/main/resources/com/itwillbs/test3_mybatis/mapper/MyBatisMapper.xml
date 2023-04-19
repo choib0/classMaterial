@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<!-- 주의! mapper 태그 내의 namespace 속성에 현재 XML 파일과 연결될 자바 클래스를 명시해야한다! -->
+<mapper namespace="com.itwillbs.test3_mybatis.mapper.MyBatisMapper">
+	<!-- 
+	마이바티스에서 실행할 SQL 구문은 각 구문의 이름을 태그로 제공함
+	=> 주의! 태그 내의 id 속성에 지정하는 이름은 Mapper 인터페이스 내의 메서드명과 일치해야한다!
+	
+	< insert 태그 기본 문법 >
+	<insert id="xxx">
+		실행할 INSERT 구문...
+	</insert>
+	=> 단, 자바의 JDBC PreparedStatement 객체를 사용 시 파라미터를 만능문자(?)로 처리했으나
+	   마이바티스에서는 #{파라미터명} 으로 데이터를 표시(별도의 치환과정 불필요)
+	=> Mapper 인터페이스에서 메서드 파라미터로 전달한 객체(XXXVO) 가 존재할 경우
+	   해당 객체 내의 멤버변수명을 파라미터명으로 지정하여 사용
+	   ex) BoardVO 객체의 board_name 변수 값을 지정 시 기존에는 board.getBoard_name() 으로 지정했지만
+	       #{board_name} 형식으로 명시하여 접근 가능하다!
+	-->
+	
+	<!-- 글 등록 작업을 위한 <insert> 태그 작성(글번호는 강제로 임시 번호 지정) -->
+	<!-- Mapper 인터페이스로부터 전달받은 BoardVO 객체를 직접 접근 가능(board.xxx 대신 xxx 만 지정) -->
+	<insert id="insertBoard">
+		INSERT 
+			INTO board
+			VALUES (
+				#{board_num} + 1	-- 글번호
+				,#{board_name}  	-- 작성자
+				,#{board_pass}   	-- 패스워드
+				,#{board_subject}   -- 제목
+				,#{board_content}   -- 내용
+				,#{board_file}   	-- 파일명
+				,#{board_num} + 1   -- board_re_ref
+				,0               	-- board_re_lev
+				,0              	 -- board_re_seq
+				,0              	 -- 조회수
+				,now()          	 -- 작성일
+			)
+	</insert>
+	
+	<!-- 최대 글 번호 조회를 위한 select 태그 -->
+	<!-- SELECT 구문 실행을 위한 SELECT 태그는 실행 후 결과값을 리턴하기 위해 -->
+	<!-- resultType 속성을 사용하여 리턴타입 지정 필수! -->
+	<!-- 주의! int 타입 리턴 시 NULL 값이 있으면 오류 발생하므로 IFNULL 함수로 기본값 처리 필요 -->
+	<!-- 오라클 사용 시 IFNULL 대신 NVL 사용 -->
+	<select id="selectMaxBoardNum" resultType="int">
+		SELECT IFNULL(MAX(board_num), 0) FROM board
+	</select>
+	
+	<!-- ================================================================== -->
+	<!-- 
+	게시물 등록 전 새 글 번호 계산에 사용되는 최대 글번호(board_num) 조회 작업을
+	별도로 처리하지 않고 <insert> 태그 내에서 <selectKey> 태그를 사용하여
+	SELECT 구문 실행 후 그 결과를 다시 INSERT 구문에 반영 가능(UPDATE, DELETE 등도 활용 가능)
+	
+	< 기본 문법 >
+	<insert id="xxx">
+		<selectKey keyProperty="값을 저장할 변수명" resultType="조회 결과 타입" order="실행 시점">
+			... 실행할 SELECT 구문 ...
+		</selectKey>
+		... INSERT 구문 ...
+	</insert>
+	=> keyProperty 속성 : 조회 데이터를 저장할 VO 객체의 실제 변수명(주의!!!)
+	                      (VO 객체에 해당 결과가 저장되므로 #{변수명} 형태로 사용 가능)
+	=> resultType 속성 : SELECT 구문 실행 시 기대되는 조회 결과(리턴값)의 타입
+	                     (integer(int), string 등)
+	=> order 속성 : 해당 SELECT 구문을 실행할 시점
+	                1) BEFORE : INSERT 등의 구문 실행 전 SELECT 구문 먼저 실행
+	                2) AFTER : INSERT 등의 구문 실행 후 SELECT 구문 나중에 실행                    
+	-->
+	<insert id="insertBoard2">
+		<!-- INSERT 구문 실행 전 수행할 SELECT 구문 기술 -->
+		<!-- 조회 결과를 BoardVO 객체의 board_num 변수에 저장하기 위해 keyProperty 속성 "board_num" 지정  -->
+		<!-- 조회 결과 데이터는 정수형이므로 resultType 속성 "int" 지정 -->
+		<!-- SELECT 결과를 INSERT 에 사용해야하므로 SELECT 먼저 수행하려면 order 속성 "BEFORE" 지정 -->
+		<selectKey keyProperty="board_num" resultType="int" order="BEFORE">
+			SELECT IFNULL(MAX(board_num), 0) FROM board
+		</selectKey>
+		<!-- SELECT 구문에서 실행된 조회 결과(최대 글번호)가 board_num 변수에 저장되어 있음 -->
+		INSERT 
+			INTO board
+			VALUES (
+				#{board_num} + 1	-- 글번호
+				,#{board_name}  	-- 작성자
+				,#{board_pass}   	-- 패스워드
+				,#{board_subject}   -- 제목
+				,#{board_content}   -- 내용
+				,#{board_file}   	-- 파일명
+				,#{board_num} + 1   -- board_re_ref
+				,0               	-- board_re_lev
+				,0              	 -- board_re_seq
+				,0              	 -- 조회수
+				,now()          	 -- 작성일
+			)
+	</insert>
+	<!-- ================================================================== -->
+	
+	<!-- 로그인 정보 판별을 위한 select 태그 -->
+	<!-- SELECT 결과(1개 레코드)를 담아 리턴할 타입으로 MemberVO 타입 지정(패키지명까지 지정) -->
+	<select id="selectUser" resultType="com.itwillbs.test3_mybatis.vo.MemberVO">
+		SELECT *
+			FROM member
+			WHERE
+				id = #{id}
+				AND passwd = #{passwd}
+	</select>
+	
+	<!-- 회원 가입을 위한 insert -->
+	<insert id="insertMember">
+		INSERT
+			INTO member
+			VALUES (
+				null,
+				#{name},
+				#{id},
+				#{passwd},
+				#{email},
+				#{gender},
+				now(),
+				'N'
+			)
+	</insert>
+	
+	<!-- 게시물 목록 조회를 위한 select -->
+	<!-- 
+	조회 결과가 단일 레코드일 때 해당 레코드 전체를 저장 가능한 VO 객체 타입을 resultType 에 선언
+	만약, 조회된 결과가 복수개의 레코드일 경우 단일 레코드 저장 가능한 VO 타입 지정 시
+	해당 객체들을 묶어서 다시 List<resultType명> 타입에 해당하는 객체에 자동으로 저장함
+	즉, 1개의 게시물 젖ㅇ보가 BoardVO 객체에 저장되고, 전체가 List 객체에 저장되므로
+	List 타입 객체의 제네릭 타입으로 사용되는 BoardVO 타입을 resultType 으로 지정
+	-->
+	<select id="selectBoardList" resultType="com.itwillbs.test3_mybatis.vo.BoardVO">
+		SELECT * 
+			FROM board
+			ORDER BY 
+				board_re_ref DESC
+				, board_re_seq ASC
+			LIMIT 10
+	</select>
+	
+</mapper>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
